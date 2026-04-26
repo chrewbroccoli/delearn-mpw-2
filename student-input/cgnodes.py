@@ -352,7 +352,53 @@ class SquareNode(MetaNode):
             node.backward(grad_x)
 
 
-# ######  TO DO  #########
-    # class MSELossNode(MetaNode):
-    # Advice: mimic the MultiplyNode and adapt the forward() and
-    # backward() methods
+class MSELossNode(MetaNode):
+
+    def __init__(self, y_hat: ValueNode, y: ValueNode, out: ValueNode):
+        super().__init__()
+        y_hat.connect_to(self)
+        y.connect_to(self)
+        self.connect_to(out)
+        self._received_count = 0
+
+    def forward(self):
+        if self.input_ready:
+            y_hat_val = self.parents[0].v
+            y_val = self.parents[1].v
+            sq_error = 0.5 * (y_hat_val - y_val) ** 2
+
+            for node in self.children:
+                node.receive_parent_value(sq_error)
+                node.forward()
+
+    def receive_parent_value(self, v):
+        del v # value is read from parents[].v in forward/backward
+        if self._received_count >= 2:
+            raise Exception(
+                "This node accepts 2 inputs that are already filled"
+            )
+        self._received_count += 1
+        if self._received_count == 2:
+            self.input_ready = True
+
+    def reset_values(self):
+        """Reset readiness counters and recursively reset descendants."""
+        self._received_count = 0
+        self.input_ready = False
+        for node in self.children:
+            node.reset_values()
+
+    def backward(self, grad_z):
+        y_hat_val = self.parents[0].v
+        y_val = self.parents[1].v
+
+        grad_diff = y_hat_val - y_val
+
+        self.parents[0].backward(grad_z * grad_diff)
+        self.parents[1].backward(-grad_z * grad_diff)
+
+    def get_parent_values(self):
+        return self.parents[0].v, self.parents[1].v
+
+
+
